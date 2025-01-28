@@ -1,0 +1,124 @@
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+def read_nastran_stress_file(file_path):
+    """
+    Read Nastran stress/strain output file
+
+    Args:
+        file_path (str): Path to Nastran output file
+
+    Returns:
+        pd.DataFrame: Parsed stress/strain data
+    """
+    try:
+        with open(file_path, 'r') as file:
+            lines = file.readlines()
+
+        # Find start of stress/strain data
+        start_index = None
+        for i, line in enumerate(lines):
+            if 'GRID' in line and ('STRESS' in line or 'STRAIN' in line):
+                start_index = i + 1
+                break
+
+        if start_index is None:
+            raise ValueError("Could not find stress/strain data in the file")
+
+        stress_data = []
+        for line in lines[start_index:]:
+            if not line.strip() or 'SUBCASE' in line:
+                continue
+
+            parts = line.split()
+            if len(parts) >= 8:
+                try:
+                    grid_id = int(parts[0])
+                    stresses = [float(x) for x in parts[2:7]]
+                    stress_data.append([grid_id] + stresses)
+                except (ValueError, IndexError):
+                    continue
+
+        df = pd.DataFrame(stress_data, columns=[
+            'GRID_ID',
+            'SIGMA_X',
+            'SIGMA_Y',
+            'SIGMA_Z',
+            'TAU_XY',
+            'TAU_XZ'
+        ])
+        return df
+
+    except Exception as e:
+        print(f"Error reading file: {e}")
+        return None
+
+def create_comprehensive_stress_histograms(df):
+    """
+    Generate comprehensive histograms for stress data
+
+    Args:
+        df (pd.DataFrame): Stress data
+    """
+
+    df['VON_MISES'] = np.sqrt(
+        df['SIGMA_X']**2 +
+        df['SIGMA_Y']**2 +
+        df['SIGMA_Z']**2 -
+        df['SIGMA_X']*df['SIGMA_Y'] -
+        df['SIGMA_X']*df['SIGMA_Z'] -
+        df['SIGMA_Y']*df['SIGMA_Z'] +
+        3*(df['TAU_XY']**2 + df['TAU_XZ']**2)
+    )
+
+
+    plt.figure(figsize=(20, 15))
+    hist_style = {
+        'bins': 100,
+        'edgecolor': 'black',
+        'alpha': 0.7
+    }
+    color_palette = {
+        'SIGMA_X': '#ffc0cb',
+        'SIGMA_Y': '#Ff6699',
+        'SIGMA_Z': '#2CA02C',
+        'TAU_XY': '#9467BD',
+        'TAU_XZ': '#E377C2',
+        'VON_MISES': '#D62728'
+    }
+
+
+    stress_components = ['SIGMA_X', 'SIGMA_Y', 'SIGMA_Z', 'TAU_XY', 'TAU_XZ']
+
+    for i, component in enumerate(stress_components, 1):
+        plt.subplot(2, 3, i)
+        plt.hist(df[component], color=color_palette[component], **hist_style)
+        plt.title(f'{component} Stress', fontsize=12)
+        plt.xlabel(f'{component} Stress', fontsize=10)
+        plt.ylabel('Frequency', fontsize=10)
+
+    plt.subplot(2, 3, 6)
+    plt.hist(df['VON_MISES'], color=color_palette['VON_MISES'], **hist_style)
+    plt.title('Von Mises Equivalent Stress', fontsize=12)
+    plt.xlabel('Von Mises Stress', fontsize=10)
+    plt.ylabel('Frequency', fontsize=10)
+    plt.tight_layout()
+    plt.suptitle('Nastran Stress Analysis Histograms', fontsize=16, y=1.02)
+    plt.savefig('nastran_stress_histograms.png', dpi=300, bbox_inches='tight')
+    plt.show()
+    print("\n Stress Analysis Statistics:")
+    print(f"Total Nodes: {len(df)}")
+    print("\nStress Component Statistics:")
+    print(df[stress_components + ['VON_MISES']].describe())
+
+
+df = read_nastran_stress_file('data_stress.OUT')
+
+if df is None or df.empty:
+    print(" No stress data found or file could not be read.")
+
+
+create_comprehensive_stress_histograms(df)
+
