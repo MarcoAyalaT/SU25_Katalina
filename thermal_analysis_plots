@@ -1,0 +1,53 @@
+import re
+import matplotlib.pyplot as plt
+from collections import defaultdict
+import numpy as np
+from matplotlib import cm
+from matplotlib.colors import Normalize
+
+archivo = "thermal_data_np.OUT"
+tiempos_temperaturas = defaultdict(list)
+
+with open(archivo, "r") as file:
+    data = file.readlines()
+
+tiempo_actual = None
+for line in data:
+    if "TIME =" in line:
+        match = re.search(r"TIME\s*=\s*([\d.E+-]+)", line)
+        if match:
+            tiempo_actual = float(match.group(1))
+    elif re.match(r"\s*\d+\s+[-+]?\d*\.\d+[eE][-+]?\d+", line) and tiempo_actual is not None:
+        try:
+            temperatura = float(line.split()[-1])
+            tiempos_temperaturas[tiempo_actual].append(temperatura)
+        except ValueError:
+            pass
+
+for tiempo, temperaturas in tiempos_temperaturas.items():
+    if temperaturas:
+        plt.figure(figsize=(10, 6))
+
+        norm = Normalize(vmin=300, vmax=max(temperaturas))
+        cmap = cm.YlOrRd
+
+        n, bins, patches = plt.hist(temperaturas, bins=70, edgecolor='black', alpha=0.7)
+
+        for i in range(len(patches)):
+            bin_center = 0.5 * (bins[i] + bins[i + 1])
+            color = cmap(norm(bin_center))
+            plt.setp(patches[i], 'facecolor', color)
+
+        sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+        sm.set_array([])
+        plt.colorbar(sm, ax=plt.gca(), label="Temperatura (K)")
+
+        plt.title(f"Histograma de Temperaturas - Tiempo = {tiempo}")
+        plt.xlabel("Temperatura (K)")
+        plt.ylabel("Frecuencia")
+        plt.xlim(300, 400)
+        plt.yscale('log')
+        plt.grid(True)
+        plt.show()
+    else:
+        print(f"No se encontraron temperaturas para el tiempo = {tiempo}.")
